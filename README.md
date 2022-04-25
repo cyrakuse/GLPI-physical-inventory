@@ -7,3 +7,7 @@ Pour cela, vous devez utiliser le plugin Barcode pour générer des QR Code pour
 # Installation
 Il suffit de déposer les fichiers sur un serveur web accessible depuis votre smartphone.
 Ensuite, il faut modifier le fichier config/config.php afin de renseigner les information de votre instance GLPI
+
+# Avertissement
+Avant d'utiliser cet outil en production, vous devez impérativement effectuer des tests sur un environnement de pré-production afin de valider son fonctionnement avec votre configuration de GLPI.
+Je ne pourrais pas être tenu pour responsable des conséquences de l'utilisation de cet outil.
