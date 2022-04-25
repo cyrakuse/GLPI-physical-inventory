@@ -1,0 +1,71 @@
+language: php
+git:
+  depth: false
+
+services:
+  - mysql
+
+env:
+  global:
+    - GLPI_URL=http://localhost:8080
+    - GLPI_ROOT_DIR=$TRAVIS_BUILD_DIR/../glpi
+    - GLPI_SOURCE=https://github.com/glpi-project/glpi
+    - CS=7.2
+  matrix:
+    - GLPI_BRANCH=9.4.3
+    - GLPI_BRANCH=9.4/bugfixes
+    - GLPI_BRANCH=9.5/bugfixes
+    - GLPI_BRANCH=master
+
+matrix:
+  exclude:
+    - php: 5.6
+      env: GLPI_BRANCH=9.5/bugfixes
+    - php: 5.6
+      env: GLPI_BRANCH=master
+  allow_failures:
+    - php: nightly
+    - env: GLPI_BRANCH=master
+
+before_script:
+  # The following line prevents PHP Warning about `$HTTP_RAW_POST_DATA` being deprecated
+  # https://stackoverflow.com/questions/26261001/warning-about-http-raw-post-data-being-deprecated
+  - echo 'always_populate_raw_post_data = -1' >> ~/.phpenv/versions/$(phpenv version-name)/etc/conf.d/travis.ini
+  - rm -f composer.lock
+  # let's clone and config GLPI for the client
+  - git clone --depth=1 $GLPI_SOURCE  -b $GLPI_BRANCH $GLPI_ROOT_DIR && cd $GLPI_ROOT_DIR
+  - composer install --no-interaction
+  - if [ -e bin/console ] && [ "$GLPI_BRANCH" = "9.5/bugfixes" ] ; then php bin/console dependencies install ; fi
+  - mysql -u root -e 'create database glpitest;'
+  - if [ -e scripts/cliinstall.php ] ; then php scripts/cliinstall.php --db=glpitest --user=root ; fi
+  - if [ -e tools/cliinstall.php ] ; then php tools/cliinstall.php --db=glpitest --user=root ; fi
+  - if [ -e bin/console ]; then php bin/console glpi:database:install --db-host=127.0.0.1 --db-name=glpitest --db-user=root --no-interaction --no-plugins --force; fi
+  # start a web server on port 8080, run in the background; wait for initialization
+  - php -S localhost:8080 > /dev/null 2>&1 &
+  - until netstat -an 2>/dev/null | grep '8080.*LISTEN'; do true; done
+  # go back to project dir and install vendors
+  - cd $TRAVIS_BUILD_DIR && composer install --no-interaction
+
+script:
+  - vendor/bin/atoum -bf tests/bootstrap.php -d tests/unit
+  - if [[ ${TRAVIS_PHP_VERSION:0:3} == "$CS" ]] && [ "$GLPI_BRANCH" = "9.2/bugfixes" ]; then vendor/bin/phpcs -p --standard=vendor/glpi-project/coding-standard/GlpiStandard/ src/ tests/; fi
+
+after_success:
+  # let's update the documentation and make the releases
+  - if [[ ${TRAVIS_PHP_VERSION:0:3} == "$CS" ]] && [ "$GLPI_BRANCH" = "9.2/bugfixes" ]; then .github/publish_changes.sh; fi
+
+php:
+  - 5.6
+  - 7.0
+  - 7.1
+  - 7.2
+  - 7.3
+  - nightly
+
+cache:
+  directories:
+    - $HOME/.composer/cache
+    - $HOME/bin
+
+notifications:
+  webhooks: https://hooks.aethonan.pro/travisci/-1001061475099/
